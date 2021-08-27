@@ -1,0 +1,428 @@
+.main	lmk_example
+
+.INCLUDE "WND:tools.def"	;Note "INCLUDE" signals system file to scandeps
+
+
+;Synergy/DE Licensing Toolkit example program
+;	This program reads the configuration record from
+;	the user, and displays the appropriate configuration key
+
+;	The program creates a printable text file for each company
+;	configuration of the form "first 8 bytes of Licensee name + .key".
+
+.define ALLUSERS,	255	;Unlimited concurrent usage (conventional)
+;.define LMKPATH,	"c:\Program Files\Synergex\SynergyDE\dbl\bin\lmk.exe" 
+record
+	stat	,i2
+	len	,i2
+	skflen	,i2
+	days	,i4
+	ix	,i2
+	inpid	,i1
+	cmd	,a256
+	skfcmd	,a256
+	line	,a80
+	 line19	 ,a19@line
+	logchn	,i2
+	fmtdat	,a10
+	lmkcmd	,a256
+
+
+record	input_record
+	company	,a50
+	 comp8	 ,a8@company
+	regstr	,a12
+	group appg, [3]a
+	  appcode	,a6
+	  nusers	,d4
+	  timeout	,d8
+	  xstr		,a100
+	   xstr1	 ,a50@xstr
+	   xstr2	 ,a50@xstr + %size(xstr1)
+	  key		,a19
+	endgroup
+
+.proc
+	xcall u_start("lmkx",1)
+	xcall e_sect("Configuration Key Generator", D_HEADER,D_CENTER)
+	xcall u_rend(D_LOAD,D_RND_INP_DSP,A_H,1, D_RND_INP_PRC,A_R,1,
+	& D_RND_HLP_BCK,A_R,1, D_RND_HLP_TTL,A_H,1, D_RND_HLP_BDR,A_H,1)
+
+	open(200,i,LMKPATH + '.') [err = nolmk]
+	if (FALSE)
+	  begin
+nolmk,	    xcall u_abort("Key program " + LMKPATH + " not found.  Change
+		& LMKPATH, recompile, and try again.")
+	  end
+	close 200
+
+	xcall m_ldcol(inpid,g_utlib,"c_general")	;Load columns and
+	xcall m_ldcol(inpid,g_utlib,"c_input")		; leave them loaded
+	xcall i_ldinp(inpid,g_utlib,"i_lmk")
+
+	;Set lmkcmd to the path of the license manager key program
+	lmkcmd = LMKPATH
+
+	repeat
+	  begin
+	    xcall i_input(inpid,,input_record,,,,1)
+	    if (g_select) then
+	      begin
+		case (g_entnam) of
+		  begincase
+"O_QUIT":	    goto exit
+"O_EXIT":	    begin
+exit,		      xcall u_finish
+		      stop
+		    end
+		  endcase
+		else
+		    call beep
+	      end
+	    else if (g_setsts) then
+	      begin
+		case (g_fldnam) of
+		  begincase
+"XSTR1":	    ix = 1
+"XSTR2":	    ix = 2
+"XSTR3":	    ix = 3
+"REGSTR":	    begin
+		      if (comp8) then
+			begin
+			  xcall u_close(logchn)
+			  xcall u_open(logchn, "o", comp8 + ".key")
+			  writes(logchn,"Licensee name     " + %atrim(company))
+			  writes(logchn,"Registration key  " + %atrim(regstr))
+			  forms(logchn, 1)
+			end
+		      else
+			begin
+			  xcall u_message("Licensee name required", D_ERROR)
+			  xcall i_next(inpid,,"COMPANY")
+			end
+		      nextloop
+		    end
+		  endcase
+		else
+		    xcall u_abort("Unrecognized break " + %atrim(g_fldnam))
+		call getkey
+	      end
+	    else
+	      xcall i_next(inpid,,"APPCODE1")
+	  end
+
+getkey,				;Build command string and
+				; create pipe to the key program
+	xcall s_bld(cmd,len,'| %a -c "%a" -r%a -a%a -u%d', lmkcmd, 
+		&     %atrim(company), regstr,appg[ix].appcode,appg[ix].nusers)
+	xcall s_bld(skfcmd,skflen,'%a -c "%a" -r%a -a%a -u%d', lmkcmd, 
+		&     %atrim(company), regstr,appg[ix].appcode,appg[ix].nusers)
+	if (appg[ix].timeout)
+	  begin
+	    xcall dyadd(19920101, days = 0, appg[ix].timeout)
+	    xcall s_bld(cmd,len,"%& -d%d", days)
+	    xcall s_bld(skfcmd,skflen,"%& -d%d", days)
+	    xcall u_fmtdat(6,fmtdat,appg[ix].timeout,,,1)
+	  end
+	if (appg[ix].xstr)
+	  begin
+	    xcall setlog("XS_",%atrim(appg[ix].xstr),stat)
+	    xcall s_bld(cmd,len,'%& -x"$XS_"')
+	    xcall s_bld(skfcmd,skflen,'%& -x"$XS_"')
+	  end
+	onerror badpipe
+	open(255,i,cmd)		;This statement executes the command
+	reads(255,line)		; string, returning its output to this
+	close 255		; program's input channel.
+	offerror
+	; Create .skf file
+	xcall s_bld(skfcmd,skflen,"%& -fa%a.skf", %atrim(company))
+	xcall spawn(skfcmd, D_NOACTIVATE+D_NOCONSOLE+D_MINIMIZED)
+	if (%rdlen .eq. 19) then
+	  begin
+	    xcall i_dspfld(inpid,"KEY" + %string(ix),appg[ix].key = line19)
+	    writes(logchn, "Application       " + %atrim(appg[ix].appcode))
+	    writes(logchn, "Max users         " + %string(appg[ix].nusers))
+	    if (appg[ix].timeout)
+	      writes(logchn, "Timeout date      " + %atrim(fmtdat))
+	    if (appg[ix].xstr)
+	      writes(logchn, "Extended data     " + %atrim(appg[ix].xstr1))
+	    if (appg[ix].xstr2)
+	      writes(logchn, "                  " + %atrim(appg[ix].xstr2))
+	    writes(logchn, "Config key        " + appg[ix].key)
+	    forms(logchn, 1)
+	  end
+	else
+	  begin
+	    xcall u_message(%atrim(line), D_ERROR)
+	    xcall i_next(inpid,,"APPCODE" + %string(ix))
+	  end
+	return
+
+badpipe,
+	xcall u_abort("PIPE error")
+	stop
+
+beep,	display(g_terminal, 7)
+	return
+
+.end
+
+.subroutine usr_utils
+
+.INCLUDE "WND:tools.def"	;Note "INCLUDE" signals system file to scandeps
+
+record
+	today	,d8
+	date	,d8
+	days	,d5
+	adays	,a5
+	fmtdat	,a10
+	msg	,a80
+	len	,d2
+
+.proc
+	clear g_select
+	case (g_entnam) of
+	  begincase
+"U_ALLUSERS":
+	    begin
+	      if (g_fldnam.ne."NUSERS")
+		begin
+		  display(g_terminal, 7)
+		  xreturn
+		end
+	      xcall i_force(ALLUSERS)
+	    end
+"U_DAYS":   begin
+	      if (g_fldnam.ne."TIMEOUT")
+		begin
+		  display(g_terminal, 7)
+		  xreturn
+		end
+	      today = ^A(%datetime)(1:8)
+baddays,      xcall u_dialog(adays,12,20,,"Days until expiration? ")
+	      onerror baddays
+	      days = adays
+	      offerror
+	      xcall dyadd(today,days,date)
+	      xcall u_fmtdat(6,fmtdat,date,,,1)
+	      xcall i_force(fmtdat)
+	    end
+	  endcase else
+	    begin
+	      xcall s_bld(msg,len,'Unknown selection "%a"',g_entnam)
+	      xcall u_message(msg(1,len),D_ERROR)
+	    end
+	xreturn
+
+.end
+
+.subroutine usr_help
+	a_helpid	,a		;(Optional) help identifier
+
+.INCLUDE "WND:tools.def"	;Note "INCLUDE" signals system file to scandeps
+
+.define BLANKS	,'                              '
+
+record
+	helpid		,a15		;Help identifier
+	nofnd		,d1		;No found flag
+
+.proc
+	xcall e_enter
+	xcall e_sect(" ", D_INFO, D_LEFT)	;Clear info line
+	if (g_enthlp .ne. BLANKS) then	;On a menu entry?
+	  helpid = "h_menu"
+	else if (%passed(a_helpid)) then
+	  helpid = a_helpid
+	else
+	  helpid = "h_general"
+
+	xcall u_popup(g_utlib, helpid, , D_NOBELL, , nofnd, TRUE)
+	if (nofnd)
+	  xcall u_message("No help for '" + %atrim(helpid) + "' available")
+
+	clear g_select
+	xcall e_exit
+	xreturn
+.end
+
+.subroutine dyadd	; Add a number of days to a date
+
+	a_indate	,d	; IN  - Base date (YYMMDD or YYYYMMDD).
+	a_days		,n	; IN  - Number of days to be added to date.
+	a_outdat	,d	; OUT - Resulting date (YYMMDD or YYYYMMDD).
+
+record
+	count		,d2
+	dy2		,d4
+	i		,d4
+	julday		,13d3,	0,31,59,90,120,151,181,212,243,273,304,334,365
+	juldt1		,d3
+	juldt2		,d3
+	len_indate	,d2		; Length of a_indate variable
+	len_outdat	,d2		; Length of a_outdat variable
+	mo2		,d4		; Month number
+	wdate1		,d8		; Work date variable (YYYYMMDD)
+	  wdt1_yr	,d4	@wdate1
+	  wdt1_mo	,d2	@wdate1+4
+	  wdt1_dy	,d2	@wdate1+6
+	wdate2		,d8		; Work date variable (YYYYMMDD)
+	  wdt2_yr	,d4	@wdate2
+	  wdt2_mo	,d2	@wdate2+4
+	  wdt2_dy	,d2	@wdate2+6
+	wdays		,d4		; Number of days
+	wrkdat		,d8		; Work date variable (YYYYMMDD)
+	  year		,d4	@wrkdat
+	  month		,d2	@wrkdat+4
+	  day		,d2	@wrkdat+6
+	yr2		,d4		; Year number
+
+.proc
+	len_outdat = %len(a_outdat)
+	len_indate = %len(a_indate)
+	wdays = a_days
+	if (a_indate.eq.0) return	; to calling program
+	if (wdays.eq.0 .and. a_outdat) goto fndday
+
+	;	Compute a date N days beyond a given date
+
+	case len_indate of
+	  begincase
+	  6: begin
+		yr2 = a_indate(1:2)
+		if (yr2.lt.50)
+		 then yr2 = yr2 + 2000
+		 else yr2 = yr2 + 1900
+		mo2 = a_indate(3:2)
+		dy2 = a_indate(5:2) + wdays
+	     end
+	  8: begin
+		yr2 = a_indate(1:4)
+		mo2 = a_indate(5:2)
+		dy2 = a_indate(7:2) + wdays
+	     end
+	  endcase
+	if (wdays.lt.0) goto loop2
+
+loop1,
+	wdays = julday(mo2 + 1) - julday(mo2)
+	if (mo2.eq.2 .and. (yr2 - (yr2 / 4 * 4).eq.0)) incr wdays
+	if (dy2.gt.wdays)
+	  begin
+	    dy2 = dy2 - wdays
+	    incr mo2
+	    if (mo2.gt.12)
+	      begin
+		mo2 = 1
+		incr yr2
+	      end
+	    goto loop1
+	  end
+	year = yr2
+	month = mo2
+	day = dy2
+	case len_outdat of
+	  begincase
+	  6: a_outdat = wrkdat(3:6)
+	  8: a_outdat = wrkdat
+	  endcase
+	return	; to calling program
+
+loop2,
+	if (dy2.le.0)
+	  begin
+	    decr mo2
+	    if (mo2.lt.1)
+	      begin
+		mo2 = 12
+		decr yr2
+	      end
+	    wdays = julday(mo2 + 1) - julday(mo2)
+	    if (mo2.eq.2 .and. (yr2 - (yr2 / 4 * 4).eq.0)) incr wdays
+	    dy2 = dy2 + wdays
+	    goto loop2
+	  end
+	year = yr2
+	month = mo2
+	day = dy2
+	case len_outdat of
+	  begincase
+	  6: a_outdat = wrkdat(3:6)
+	  8: a_outdat = wrkdat
+	  endcase
+	return	; to calling program
+	
+	;	Find the number of days elapsed between two dates
+fndday,
+	if (a_indate.eq.0 .or. a_outdat.eq.0) return
+	case len_indate of
+	  begincase
+	  6: begin
+		clear wdate1
+		wdate1(3:6) = a_indate
+		if (wdt1_yr.lt.50)
+		 then wdt1_yr = wdt1_yr + 2000
+		 else wdt1_yr = wdt1_yr + 1900
+	     end
+	  8: wdate1 = a_indate
+	  endcase
+	case len_outdat of
+	  begincase
+	  6: begin
+		clear wdate2
+		wdate2(3:6) = a_outdat
+		if (wdt2_yr.lt.50)
+		 then wdt2_yr = wdt2_yr + 2000
+		 else wdt2_yr = wdt2_yr + 1900
+	     end
+	  8: wdate2 = a_outdat
+	  endcase
+	if (wdate2.eq.wdate1) return
+	if (wdate2.lt.wdate1)
+	  begin
+	    case len_indate of
+	      begincase
+	      6: begin
+		  clear wdate2
+		  wdate2(3:6) = a_indate
+		  if (wdt2_yr.lt.50)
+		   then wdt2_yr = wdt2_yr + 2000
+		   else wdt2_yr = wdt2_yr + 1900
+		 end
+	      8: wdate2 = a_indate
+	      endcase
+	    case len_outdat of
+	      begincase
+	      6: begin
+		  clear wdate1
+		  wdate1(3:6) = a_outdat
+		  if (wdt1_yr.lt.50)
+		   then wdt1_yr = wdt1_yr + 2000
+		   else wdt1_yr = wdt1_yr + 1900
+		 end
+	      8: wdate1 = a_outdat
+	      endcase
+	  end
+	juldt1 = julday(wdt1_mo) + wdt1_dy
+	juldt2 = julday(wdt2_mo) + wdt2_dy
+	if (wdt1_yr.eq.wdt2_yr)
+	  begin
+	    a_days = juldt2 - juldt1
+	    if (wdt1_yr - (wdt1_yr / 4 * 4).eq.0)
+		if (wdt1_mo.le.2 .and. wdt2_mo.ge.3) incr a_days
+	    return
+	  end
+	a_days = (((wdt2_yr - wdt1_yr) * 365) + juldt2) - juldt1
+	for i = wdt1_yr step 1 until wdt2_yr do
+	  begin
+	    if (i - (i / 4 * 4).eq.0)
+	      begin
+		if (i.eq.wdt1_yr .and. wdt1_mo.le.2) incr a_days
+		if (i.eq.wdt2_yr .and. wdt2_mo.ge.3) incr a_days
+		if (i.ne.wdt1_yr .and. i.ne.wdt2_yr) incr a_days
+	      end
+	  end
+	return
+.end

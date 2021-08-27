@@ -1,0 +1,47 @@
+; lm.def: Sample subroutine to include in application code accessing LM
+
+.ifndef LMSTS_OK
+.define LMSTS_OK,	0		; Product has been configured
+.define LMSTS_NOCONFIG,	1		; Product has not been configured
+.define LMSTS_MAXUSR,	2		; Concurrent user maximum exceeded
+.define LMSTS_BADTOK,	3		; Invalid token on LM_LOGOUT
+.define LMSTS_TIMEOUT,	7		; Product demo has expired
+					; Values > 170 indicate access errors
+.define LMSTS_NOSYND,   183		; Cannot access Unix server
+.define LMSTS_NOACCESS, 185		; Cannot access Windows server
+.endc
+
+record lm_record		;Application record
+	lm_applic	,a6	;Application identifier
+	lm_usrmax	,d4	;Max concurrent users
+	lm_expdat	,d8	;Timeout date YYYYMMDD
+	lm_insdat	,d8	;Install date YYYYMMDD
+	lm_custom	,a100	;Developer defined information
+
+record lm_site			;License record for site information
+		    	,a6	;Blanks
+        lm_licensee	,a50    ;Licensee name entered during registration
+	lm_regstr	,a12	;Registration string
+	lm_regdat	,d8	;Registration date YYYYMMDD
+	lm_timout	,d8	;Preinstall timeout
+.define lm_compny lm_licensee	;For backwards compatibility
+
+; License Manager API
+;
+; xcall lm_info(lm_stat, lm_site)
+;	lm_stat		,n 	;License Manager site status
+;	lm_site		,a 	;Site information record
+
+; xcall lm_login(ap_astat, producer, application, token, lm_record, curr_user)
+;	ap_stat		,n	;Application status 
+;	producer	,a	;Producer identifier
+;	application	,a	;Application identifier
+;	token		,i	;Login token
+;	lm_record	,a	;Application record
+;	curr_user	,n	;Current user slot
+
+; xcall lm_logout(lo_stat, producer, application, token)
+;	lo_stat		,n	;Application status 
+;	producer	,a	;Producer identifier
+;	application	,a	;Application identifier
+;	token		,i	;Login token

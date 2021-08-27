@@ -1,0 +1,140 @@
+;
+; This program illustrates use of LM_AUTHORIZE (LM_LOGIN) and LM_LOGOUT
+;
+; Compile and link with lm_auth.dbl
+;
+
+.include "DBLDIR:lm.def"
+
+record
+    i		,d2
+    status	,d3
+    id		,[10]a6
+    name	,[10]a6
+    token	,[10]i4
+    seat	,[10]i4
+    licensee	,a50
+    regstr	,a12
+    anum	,a2
+    pnum	,d2
+    prods	,d2
+    achk	,a1
+    chk		,d1
+    aseat	,a10
+
+proc
+    xcall flags(7004020)
+    open(1, o, 'tt:')
+
+    ; Test logging in licenses
+
+    for i from 1 thru 10
+      begin
+	if (i.gt.1)
+	    writes(1, "Enter license #" + %string(i) + " or EOF to enter logout")
+	display(1, "Producer id: ")
+	reads(1, id[i], phase2)
+	display(1, "Product name: ")
+	reads(1, name[i], phase2)
+	display(1, "Seat [default]: ")
+	reads(1, aseat)
+	if (%rdlen.eq.0) then
+	    seat[i] = 0;		; Set default seat to 0
+	else
+	    seat[i] = aseat;
+	clear token[i]
+again,
+.ifdef DBLV93
+	display(1, "(L)ogin/(C)heck/C(H)eck config [L]: ")
+.else
+	display(1, "(L)ogin/(C)heck [L]: ")
+.endc
+	reads(1, achk, phase2)
+	if (%rdlen.eq.0) then
+	    chk = 0
+	else
+	  begin
+	    upcase achk
+	    if (achk.eq.'L') then
+		chk = 0
+	    else if (achk.eq.'C') then
+		chk = 1
+.ifdef DBLV93
+	    else if (achk.eq.'H') then
+		chk = 2
+.endc
+	    else
+		goto again
+	  end
+
+	; Login the license
+
+	xcall lm_authorize(status, id[i], name[i], token[i], licensee, regstr, chk, seat[i])
+	writes(1, %atrim(licensee) + " [" + regstr + "]")
+
+	; Verify the login
+
+	if (status.eq.LMSTS_OK .and. chk) then
+	    writes(1, name[i] + " License check ok")
+	else if (status.eq.LMSTS_OK .and. chk.eq.0)
+	  begin
+	    if (token[i]) then
+		writes(1, name[i] + " Login ok")
+	    else
+		writes(1, name[i] + " (Demo) Login ok")
+	  end
+	if (status.eq.LMSTS_MAXUSR) then
+	    writes(1, name[i] + " Exceeded maximum users")
+	else if (status.eq.LMSTS_NOCONFIG) then
+	    writes(1, name[i] + " License not configured")
+	else if (status.eq.LMSTS_TIMEOUT) then
+	    writes(1, name[i] + " License timed out")
+	else if (status.ne.LMSTS_OK)
+	    writes(1, "Unknown error " + %string(status))
+      end
+
+    ; Test logging out licenses
+
+phase2,
+    repeat
+      begin
+	prods = 0
+	forms(1,1)
+	for i from 1 thru 10
+	  begin
+	    if (token[i].ne.0)
+	      begin
+		if (seat[i].eq.0) then
+		    aseat = "default"
+		else
+		    aseat = seat[i] [left]
+		writes(1, %string(i) + '. ' + id[i] + " " + name[i] + " " + aseat)
+		incr prods
+	      end
+	  end
+	if (.not.prods)
+	    goto eof
+        display(1, "Select license # to logout:")
+	reads(1, anum, eof);
+	pnum = anum
+	if (pnum.ge.1.and.pnum.le.10) then
+	  begin
+	    display(1, "Logging out [" + id[pnum] + "] [" + name[pnum] + 
+	    &	   "] [seat " + %string(seat[pnum]) + "]")
+	    xcall lm_logout(status, id[pnum], name[pnum], token[pnum], seat[pnum])
+	    clear token[pnum]
+	    if (status.eq.LMSTS_OK) then
+		writes(1, " - LM_OK")
+	    else if (status.eq.LMSTS_BADTOK) then
+		writes(1, " - LM_BADTOK")
+	    else
+		writes(1, " - " + %string(status))
+	  end
+	else
+	    writes(1, "Invalid selection - " + anum)
+      end
+eof,
+    forms(1,1)
+    writes(1, "Stopping...")
+    sleep 5
+    stop

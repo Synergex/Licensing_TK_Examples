@@ -1,0 +1,114 @@
+;
+; This example illustrates how to use the Synergy/DE Licensing Toolkit API.
+;
+; Pass this routine the producer ID and the application code, and it will
+; return a value indicating the status of the license, the login token
+; to pass to lm_logout, the registered licensee name, and the registration
+; string.
+;
+;  The License status is one of the following:
+;      LMSTS_OK      - The license for this product is current
+;      LMSTS_TIMEOUT - The license for this product has timed out
+;      LMSTS_MAXUSR  - This login would exceed concurrent users for the license
+;                        for this product
+;      LMSTS_NOCONFIG  - There is no license for this product
+;
+;
+; For more information about the Synergy/DE Licensing Toolkit, refer 
+; to the documentation that accompanied your License Key Generator distribution.
+;
+
+.subroutine lm_authorize
+status	,n
+id	,a
+name	,a
+.ifndef V9CMPONLY
+token	,a
+.else
+mismatch token	,n
+.endc
+licensee ,a
+regstr	,a
+chkonly	,n		; Check for license only, no login
+seatspc	,n
+
+.include "DBLDIR:lm.def"
+
+record
+	nmon		,i4
+	pos		,i4
+	lstat		,i4
+	pstat		,i4
+	chk		,i4
+	seat		,i4
+	curr_user	,d5
+	todays_date	,d8
+	mons		,12a3,	"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+			&	"JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
+
+record date
+	day		,d2
+			,a1
+	mon		,a3
+			,a1
+	year		,d4
+
+.nodebug			; Disallow debugging activity within 
+				; this routine.
+.proc
+				; Get the LM and product configuration
+	xcall lm_info(lstat, lm_site)
+        licensee = lm_licensee
+	regstr = lm_regstr
+	if ((lstat .gt. 170).and.(lstat .lt. 200))
+	  begin
+	    status = lstat
+	    return
+	  end
+	if (name .eq. "      ")
+	  begin
+	    status = LMSTS_OK
+	    return
+	  end
+	if (^passed(chkonly)) then
+	    chk = chkonly	; Pass through license check argument
+	else
+	    chk = 0		; Default to original behavior (login)
+	if (^passed(seatspc)) then
+	    seat = seatspc	; Pass through seat argument
+	else
+	    seat = 0		; Default to original behavior 
+	xcall lm_login(pstat, id, name, token, lm_record, curr_user, chk, seat)
+.ifndef DBLV93			; The following is now handled in lm_login
+	xcall date(date)
+	xcall instr(1, mons(1:36), mon, pos)
+	nmon = (pos / 3) + 1
+	xcall s_bld(^a(todays_date), , "%4d%2d%2d", year, nmon, day)
+
+	if ((pstat .gt. 170).and.(pstat .lt. 200))
+	  begin
+	    status = pstat
+	    return
+	  end
+	if (pstat .eq. LMSTS_OK) then	; Check for product recognition
+	  begin
+	    if (lm_expdat .and. (todays_date .gt. lm_expdat)) then
+		status = LMSTS_TIMEOUT		; Check for pre-9.3
+	    else				;  timeout condition
+		status = LMSTS_OK
+	  end
+	else if (pstat .eq. LMSTS_TIMEOUT) then	; Check for 9.3+ timeout 
+	    status = LMSTS_TIMEOUT	
+	else if (pstat .eq. LMSTS_MAXUSR) then	; Check for user limit
+	    status = LMSTS_MAXUSR
+						; Check for preinstall timeout
+	else if ((pstat .eq. LMSTS_NOCONFIG) .and.
+	&	 (todays_date .le. lm_timout)) then
+	    status = LMSTS_OK			;  or non-configured product
+	else
+	    status = LMSTS_NOCONFIG
+.else
+	status = pstat
+.endc
+	return
+.end

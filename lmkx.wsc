@@ -1,0 +1,103 @@
+.script
+.version "6.0.4"
+.date_generated "29-JAN-1997"
+
+;------------------------------------------------------------------------------
+;
+; LMK Example
+;
+; lmk_ex.wsc - menu columns and windows
+;
+;------------------------------------------------------------------------------
+;
+.column c_general, "General"
+.entry o_help, "Help", key(F1)
+.line
+.entry u_allusers, "Unlimited", key(F2)
+.entry u_days, "Days", key(F3)
+.line
+.entry o_exit, "Exit", key(F4)
+.entry o_quit, "Quit"
+.end
+
+.column c_input, "Input"
+.entry i_prev, "Previous field", key(UP)
+.entry i_next, "Next field", key(DOWN)
+.line
+.entry e_left, "Left", key(LEFT)
+.entry e_right, "Right", key(RIGHT)
+.entry e_bmov, "Beginning of field", key(^B)
+.entry e_emov, "End of field", key(^E)
+.entry e_lclr, "Clear field", key(^U)
+.line
+.entry o_cancel, "Abandon", key(^A)
+.end
+
+.input i_lmk, 17, 74
+.placement 3, 4
+.line WndLin1, 74, pos(3, 1), horizontal
+.line WndLin2, 72, pos(8, 2), horizontal
+.line WndLin3, 72, pos(13, 2), horizontal
+.field company, a50, pos(1,2), prompt("Licensee name         "), fpos(1,23),  -
+ info("Name of licensee being configured")
+.field regstr, a12, pos(2,2), prompt("Registration string  "), fpos(2,23),  -
+ break(return),  -
+ info("Registration key from licensee being configured (install_lm)")
+.field appcode1, a6, pos(4,2), prompt("Application code     "), fpos(4,23),  -
+ info("Your identifier for the application")
+.field nusers1, d4, pos(4,29), prompt("  Number of users "), fpos(4,47),  -
+ justify(left), info("Maximum concurrent users. Press F2 for unlimited")
+.field timeout1, d8, date, pos(4,51), prompt("   Timeout "), fpos(4,62),  -
+ blank_if_zero, justify(left), info("Press F3 to enter days from today")
+.field xstr1, 2a50, pos(5,2), prompt("Extended data        "), fpos(5,23),  -
+ break(return), info("Enter any application-specific information")
+.field key1, a19, pos(7,2), prompt("Configuration key    "), fpos(7,23)
+.field appcode2, a6, pos(9,2), prompt("Application code     "), fpos(9,23),  -
+ info("Your identifier for the application")
+.field nusers2, d4, pos(9,29), prompt("  Number of users "), fpos(9,47),  -
+ justify(left), info("Maximum concurrent users. Press F2 for unlimited")
+.field timeout2, d8, date, pos(9,51), prompt("   Timeout "), fpos(9,62),  -
+ blank_if_zero, justify(left), info("Press F3 to enter days from today")
+.field xstr2, 2a50, pos(10,2), prompt("Extended data        "), fpos(10,23),  -
+ break(return), info("Enter any application-specific information")
+.field key2, a19, pos(12,2), prompt("Configuration key    "), fpos(12,23)
+.field appcode3, a6, pos(14,2), prompt("Application code     "), fpos(14,23),  -
+ info("Your identifier for the application")
+.field nusers3, d4, pos(14,29), prompt("  Number of users "), fpos(14,47),  -
+ justify(left), info("Maximum concurrent users. Press F2 for unlimited")
+.field timeout3, d8, date, pos(14,51), prompt("   Timeout "), fpos(14,62),  -
+ blank_if_zero, justify(left), info("Press F3 to enter days from today")
+.field xstr3, 2a50, pos(15,2), prompt("Extended data        "), fpos(15,23),  -
+ break(return), info("Enter any application-specific information")
+.field key3, a19, pos(17,2), prompt("Configuration key    "), fpos(17,23)
+.structure i_lmk, company, regstr, appcode1, nusers1, timeout1, xstr1, key1,  -
+ appcode2, nusers2, timeout2, xstr2, key2, appcode3, nusers3, timeout3,  -
+ xstr3, key3
+.set i_lmk, i_lmk, company, regstr, appcode1, nusers1, timeout1, xstr1,  -
+ appcode2, nusers2, timeout2, xstr2, appcode3, nusers3, timeout3, xstr3
+.end
+
+.window h_menu, 10, 60
+.placement 7, 10
+.title " Menu Help "
+.text WndTxt1, position(1, 1)
+Highlight the desired item, then press return.  To move to the desired
+item, use the arrow keys or the first letter of an entry on the current
+column.  To move from column to column, use the left and right arrow keys.
+Alternately, press the shortcut key, if any, displayed to the right of an
+entry to quickly activate a selection.
+.trim
+.end
+
+.window h_general, 10, 62
+.placement 7, 10
+.title " General Help "
+.text WndTxt2, position(1, 1)
+This program provides an SAS interface to the License Manger
+configuration key generator. You first enter the name and
+registration string of the licensee that you want to configure,
+then enter configuration information for each application you
+wish to configure.
+.trim
+.end
+
